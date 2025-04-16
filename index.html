@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>떡상 기원</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.2/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        #input-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        #chart-container {
+            width: 800px;
+            height: 400px;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>떡상 기원</h1>
+
+    <div id="input-container">
+        <label for="stock-name">주식 종목:</label>
+        <input type="text" id="stock-name" placeholder="예: 종목 입력 후 엔터">
+    </div>
+
+    <div id="chart-container">
+        </div>
+
+    <button id="increase-button">+</button>
+
+    <script>
+        function generateRandomCandleData() {
+            const initialValue = Math.floor(Math.random() * 151) + 50;
+            const numberOfPoints = Math.floor(Math.random() * 51) + 50;
+            const data = [];
+            let currentTime = new Date();
+            let previousClose = initialValue;
+
+            for (let i = 0; i < numberOfPoints; i++) {
+                const open = parseFloat(previousClose.toFixed(3));
+                const highFactor = Math.random() * 0.05 + 1;
+                const lowFactor = Math.random() * 0.05 + 0.95;
+                const closeFactor = (Math.random() - 0.5) * 0.1 + 1;
+                const high = parseFloat((open * highFactor).toFixed(3));
+                const low = parseFloat((open * lowFactor).toFixed(3));
+                const close = parseFloat((open * closeFactor).toFixed(3));
+
+                data.push({
+                    time: new Date(currentTime - (numberOfPoints - i) * 86400000).toISOString().slice(0, 10),
+                    open: open,
+                    high: Math.max(open, high, low, close),
+                    low: Math.min(open, high, low, close),
+                    close: close,
+                });
+                previousClose = close;
+                currentTime.setDate(currentTime.getDate() + 1);
+            }
+            return data;
+        }
+
+        const chartContainer = document.getElementById('chart-container');
+        const increaseButton = document.getElementById('increase-button');
+        const stockNameInput = document.getElementById('stock-name');
+        let chart = null;
+        let candleSeries = null;
+        let currentData = generateRandomCandleData();
+        let isRed = false;
+        let nextIncreaseDate = null;
+        let hasIncreasedOnce = false; // '+' 버튼이 처음 눌렸는지 확인하는 플래그
+
+        function createOrUpdateChart(data, color) {
+            const upColor = color === 'red' ? '#d7544d' : '#26a69a';
+            const downColor = color === 'red' ? '#d7544d' : '#26a69a';
+            if (chart) {
+                candleSeries.applyOptions({ upColor: upColor, downColor: downColor });
+                candleSeries.setData(data);
+            } else {
+                chart = LightweightCharts.createChart(chartContainer, {
+                    width: 800,
+                    height: 400,
+                    priceScale: {
+                        precision: 3,
+                    },
+                });
+                candleSeries = chart.addCandlestickSeries({ upColor: upColor, downColor: downColor });
+                candleSeries.setData(data);
+            }
+        }
+
+        // 초기 차트 생성
+        createOrUpdateChart(currentData);
+        if (currentData.length > 0) {
+            const lastTime = new Date(currentData[currentData.length - 1].time);
+            const nextDay = new Date(lastTime);
+            nextDay.setDate(lastTime.getDate() + 1);
+            nextIncreaseDate = nextDay.toISOString().slice(0, 10);
+        } else {
+            const now = new Date();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(now.getDate() + 1);
+            nextIncreaseDate = tomorrow.toISOString().slice(0, 10);
+        }
+
+        stockNameInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                currentData = generateRandomCandleData();
+                isRed = false;
+                hasIncreasedOnce = false; // 종목 변경 시 '+' 버튼 상태 초기화
+                createOrUpdateChart(currentData);
+                if (currentData.length > 0) {
+                    const lastTime = new Date(currentData[currentData.length - 1].time);
+                    const nextDay = new Date(lastTime);
+                    nextDay.setDate(lastTime.getDate() + 1);
+                    nextIncreaseDate = nextDay.toISOString().slice(0, 10);
+                } else {
+                    const now = new Date();
+                    const tomorrow = new Date(now);
+                    tomorrow.setDate(now.getDate() + 1);
+                    nextIncreaseDate = tomorrow.toISOString().slice(0, 10);
+                }
+            }
+        });
+
+        increaseButton.addEventListener('click', () => {
+            if (candleSeries && currentData.length > 0) {
+                if (!hasIncreasedOnce && nextIncreaseDate) {
+                    const lastCandle = currentData[currentData.length - 1];
+                    const open = parseFloat(lastCandle.close.toFixed(3));
+                    const change = open * 0.001;
+                    const close = parseFloat((open + change).toFixed(3));
+                    const high = parseFloat(Math.max(open, close, lastCandle.high).toFixed(3));
+                    const low = parseFloat(Math.min(open, close, lastCandle.low).toFixed(3));
+
+                    currentData.push({ time: nextIncreaseDate, open: open, high: high, low: low, close: close });
+                    isRed = true;
+                    createOrUpdateChart(currentData, 'red');
+                    hasIncreasedOnce = true; // 처음 증가 발생
+                } else if (hasIncreasedOnce && currentData.length > 0) {
+                    // 날짜는 고정하고 가격만 상승
+                    const lastCandle = currentData[currentData.length - 1];
+                    const open = parseFloat(lastCandle.close.toFixed(3));
+                    const change = open * 0.001;
+                    const close = parseFloat((open + change).toFixed(3));
+                    const high = parseFloat(Math.max(open, close, lastCandle.high).toFixed(3));
+                    const low = parseFloat(Math.min(open, close, lastCandle.low).toFixed(3));
+
+                    currentData[currentData.length - 1] = { ...lastCandle, close: close, high: Math.max(lastCandle.high, close), low: Math.min(lastCandle.low, close) };
+                    createOrUpdateChart(currentData, 'red');
+                }
+            } else if (candleSeries && nextIncreaseDate) {
+                const initialRandomValue = parseFloat((Math.random() * 50 + 100).toFixed(3));
+                currentData = [{ time: nextIncreaseDate, open: initialRandomValue, high: initialRandomValue * 1.01, low: initialRandomValue * 0.99, close: initialRandomValue * 1.005 }];
+                isRed = true;
+                createOrUpdateChart(currentData, 'red');
+                hasIncreasedOnce = true;
+            }
+        });
+    </script>
+</body>
+</html>
