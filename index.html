@@ -6,48 +6,17 @@
     <meta name="google-adsense-account" content="ca-pub-4547328202745686">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>떡상 기원</title>
+    <title>떡상 기원 - 희망의 주식 차트</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.2/dist/lightweight-charts.standalone.production.js"></script>
-    <style>
-        body {
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
-        }
-        #input-container {
-            margin-bottom: 20px;
-            display: flex;
-            gap: 10px;
-        }
-        #chart-container {
-            width: 800px;
-            height: 400px;
-            border: 1px solid #ccc;
-            margin-bottom: 20px;
-        }
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.20.6/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <h1>떡상 기원</h1>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+    <div id="root"></div>
 
-    <div id="input-container">
-        <label for="stock-name">주식 종목:</label>
-        <input type="text" id="stock-name" placeholder="예: 종목 입력 후 엔터">
-    </div>
-
-    <div id="chart-container">
-        </div>
-
-    <button id="increase-button">+</button>
-
-    <script>
+    <script type="text/babel">
         function generateRandomCandleData() {
             const initialValue = Math.floor(Math.random() * 151) + 50;
             const numberOfPoints = Math.floor(Math.random() * 51) + 50;
@@ -63,13 +32,15 @@
                 const high = parseFloat((open * highFactor).toFixed(3));
                 const low = parseFloat((open * lowFactor).toFixed(3));
                 const close = parseFloat((open * closeFactor).toFixed(3));
+                const volume = Math.floor(Math.random() * 1000) + 500;
 
                 data.push({
                     time: new Date(currentTime - (numberOfPoints - i) * 86400000).toISOString().slice(0, 10),
-                    open: open,
+                    open,
                     high: Math.max(open, high, low, close),
                     low: Math.min(open, high, low, close),
-                    close: close,
+                    close,
+                    volume
                 });
                 previousClose = close;
                 currentTime.setDate(currentTime.getDate() + 1);
@@ -77,103 +48,253 @@
             return data;
         }
 
-        const chartContainer = document.getElementById('chart-container');
-        const increaseButton = document.getElementById('increase-button');
-        const stockNameInput = document.getElementById('stock-name');
-        let chart = null;
-        let candleSeries = null;
-        let currentData = generateRandomCandleData();
-        let isRed = false;
-        let nextIncreaseDate = null;
-        let hasIncreasedOnce = false; // '+' 버튼이 처음 눌렸는지 확인하는 플래그
+        const stockList = [
+            "삼성전자", "현대차", "SK하이닉스", "LG화학", "카카오", "네이버", "테슬라", "애플"
+        ];
 
-        function createOrUpdateChart(data, color) {
-            const upColor = color === 'red' ? '#d7544d' : '#26a69a';
-            const downColor = color === 'red' ? '#d7544d' : '#26a69a';
-            if (chart) {
-                candleSeries.applyOptions({ upColor: upColor, downColor: downColor });
-                candleSeries.setData(data);
-            } else {
-                chart = LightweightCharts.createChart(chartContainer, {
-                    width: 800,
-                    height: 400,
-                    priceScale: {
-                        precision: 3,
-                    },
-                });
-                candleSeries = chart.addCandlestickSeries({ upColor: upColor, downColor: downColor });
-                candleSeries.setData(data);
-            }
-        }
+        function App() {
+            const [isDarkMode, setIsDarkMode] = React.useState(false);
+            const [stockName, setStockName] = React.useState("");
+            const [filteredStocks, setFilteredStocks] = React.useState([]);
+            const [chartData, setChartData] = React.useState(generateRandomCandleData());
+            const [isRising, setIsRising] = React.useState(false);
+            const [hasIncreasedOnce, setHasIncreasedOnce] = React.useState(false);
+            const [nextIncreaseDate, setNextIncreaseDate] = React.useState(null);
+            const chartRef = React.useRef(null);
+            const chartInstanceRef = React.useRef(null);
+            const candleSeriesRef = React.useRef(null);
+            const volumeSeriesRef = React.useRef(null);
 
-        // 초기 차트 생성
-        createOrUpdateChart(currentData);
-        if (currentData.length > 0) {
-            const lastTime = new Date(currentData[currentData.length - 1].time);
-            const nextDay = new Date(lastTime);
-            nextDay.setDate(lastTime.getDate() + 1);
-            nextIncreaseDate = nextDay.toISOString().slice(0, 10);
-        } else {
-            const now = new Date();
-            const tomorrow = new Date(now);
-            tomorrow.setDate(now.getDate() + 1);
-            nextIncreaseDate = tomorrow.toISOString().slice(0, 10);
-        }
-
-        stockNameInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                currentData = generateRandomCandleData();
-                isRed = false;
-                hasIncreasedOnce = false; // 종목 변경 시 '+' 버튼 상태 초기화
-                createOrUpdateChart(currentData);
-                if (currentData.length > 0) {
-                    const lastTime = new Date(currentData[currentData.length - 1].time);
+            // 다음 캔들 날짜 설정
+            React.useEffect(() => {
+                if (chartData.length > 0) {
+                    const lastTime = new Date(chartData[chartData.length - 1].time);
                     const nextDay = new Date(lastTime);
                     nextDay.setDate(lastTime.getDate() + 1);
-                    nextIncreaseDate = nextDay.toISOString().slice(0, 10);
+                    setNextIncreaseDate(nextDay.toISOString().slice(0, 10));
                 } else {
                     const now = new Date();
                     const tomorrow = new Date(now);
                     tomorrow.setDate(now.getDate() + 1);
-                    nextIncreaseDate = tomorrow.toISOString().slice(0, 10);
+                    setNextIncreaseDate(tomorrow.toISOString().slice(0, 10));
                 }
-            }
-        });
+            }, [chartData]);
 
-        increaseButton.addEventListener('click', () => {
-            if (candleSeries && currentData.length > 0) {
-                if (!hasIncreasedOnce && nextIncreaseDate) {
-                    const lastCandle = currentData[currentData.length - 1];
-                    const open = parseFloat(lastCandle.close.toFixed(3));
-                    const change = open * 0.001;
-                    const close = parseFloat((open + change).toFixed(3));
-                    const high = parseFloat(Math.max(open, close, lastCandle.high).toFixed(3));
-                    const low = parseFloat(Math.min(open, close, lastCandle.low).toFixed(3));
+            // 차트 초기화
+            React.useEffect(() => {
+                if (chartRef.current) {
+                    const chartOptions = {
+                        width: chartRef.current.clientWidth,
+                        height: 400,
+                        layout: {
+                            background: { color: isDarkMode ? '#1f2937' : '#ffffff' },
+                            textColor: isDarkMode ? '#d1d5db' : '#1f2937'
+                        },
+                        grid: {
+                            vertLines: { color: isDarkMode ? '#374151' : '#e5e7eb' },
+                            horzLines: { color: isDarkMode ? '#374151' : '#e5e7eb' }
+                        },
+                        timeScale: { timeVisible: true }
+                    };
 
-                    currentData.push({ time: nextIncreaseDate, open: open, high: high, low: low, close: close });
-                    isRed = true;
-                    createOrUpdateChart(currentData, 'red');
-                    hasIncreasedOnce = true; // 처음 증가 발생
-                } else if (hasIncreasedOnce && currentData.length > 0) {
-                    // 날짜는 고정하고 가격만 상승
-                    const lastCandle = currentData[currentData.length - 1];
-                    const open = parseFloat(lastCandle.close.toFixed(3));
-                    const change = open * 0.001;
-                    const close = parseFloat((open + change).toFixed(3));
-                    const high = parseFloat(Math.max(open, close, lastCandle.high).toFixed(3));
-                    const low = parseFloat(Math.min(open, close, lastCandle.low).toFixed(3));
+                    chartInstanceRef.current = LightweightCharts.createChart(chartRef.current, chartOptions);
+                    candleSeriesRef.current = chartInstanceRef.current.addCandlestickSeries({
+                        upColor: isRising ? '#22c55e' : '#26a69a', // 상승 시 밝은 초록
+                        downColor: '#ef5350',
+                        borderVisible: false,
+                        wickUpColor: isRising ? '#22c55e' : '#26a69a',
+                        wickDownColor: '#ef5350'
+                    });
+                    volumeSeriesRef.current = chartInstanceRef.current.addHistogramSeries({
+                        color: '#26a69a',
+                        priceFormat: { type: 'volume' },
+                        priceScaleId: '',
+                        scaleMargins: { top: 0.8, bottom: 0 }
+                    });
 
-                    currentData[currentData.length - 1] = { ...lastCandle, close: close, high: Math.max(lastCandle.high, close), low: Math.min(lastCandle.low, close) };
-                    createOrUpdateChart(currentData, 'red');
+                    candleSeriesRef.current.setData(chartData);
+                    volumeSeriesRef.current.setData(chartData.map(d => ({
+                        time: d.time,
+                        value: d.volume,
+                        color: d.close >= d.open ? '#26a69a' : '#ef5350'
+                    })));
+
+                    return () => {
+                        chartInstanceRef.current.remove();
+                    };
                 }
-            } else if (candleSeries && nextIncreaseDate) {
-                const initialRandomValue = parseFloat((Math.random() * 50 + 100).toFixed(3));
-                currentData = [{ time: nextIncreaseDate, open: initialRandomValue, high: initialRandomValue * 1.01, low: initialRandomValue * 0.99, close: initialRandomValue * 1.005 }];
-                isRed = true;
-                createOrUpdateChart(currentData, 'red');
-                hasIncreasedOnce = true;
-            }
-        });
+            }, [chartData, isDarkMode, isRising]);
+
+            // 종목 입력 처리
+            const handleStockInput = (e) => {
+                const value = e.target.value;
+                setStockName(value);
+                if (value) {
+                    setFilteredStocks(stockList.filter(stock => stock.includes(value)));
+                } else {
+                    setFilteredStocks([]);
+                }
+            };
+
+            // 종목 선택 처리
+            const handleStockSelect = (stock) => {
+                setStockName(stock);
+                setFilteredStocks([]);
+                setChartData(generateRandomCandleData());
+                setIsRising(false);
+                setHasIncreasedOnce(false);
+            };
+
+            // 상승 버튼 처리
+            const handleIncrease = (e) => {
+                e.preventDefault(); // 기본 이벤트 방지 (스크롤 방지)
+
+            
+
+                if (candleSeriesRef.current && chartData.length > 0) {
+                    if (!hasIncreasedOnce && nextIncreaseDate) {
+                        const lastCandle = chartData[chartData.length - 1];
+                        const open = parseFloat(lastCandle.close.toFixed(3));
+                        const change = open * 0.03; // 3% 상승
+                        const close = parseFloat((open + change).toFixed(3));
+                        const high = parseFloat(Math.max(open, close, lastCandle.high).toFixed(3));
+                        const low = parseFloat(Math.min(open, close, lastCandle.low).toFixed(3));
+                        const volume = Math.floor(Math.random() * 1000) + 500;
+
+                        // 부드러운 상승 애니메이션
+                        const newData = [...chartData, {
+                            time: nextIncreaseDate,
+                            open,
+                            high,
+                            low,
+                            close,
+                            volume
+                        }];
+                        setChartData(newData);
+                        setIsRising(true);
+                        setHasIncreasedOnce(true);
+
+                        // 1초 후 색상 복구
+                        setTimeout(() => setIsRising(false), 1000);
+                    } else if (hasIncreasedOnce) {
+                        const lastCandle = chartData[chartData.length - 1];
+                        const open = parseFloat(lastCandle.close.toFixed(3));
+                        const change = open * 0.03; // 3% 상승
+                        const close = parseFloat((open + change).toFixed(3));
+                        const high = parseFloat(Math.max(open, close, lastCandle.high).toFixed(3));
+                        const low = parseFloat(Math.min(open, close, lastCandle.low).toFixed(3));
+                        const volume = Math.floor(Math.random() * 1000) + 500;
+
+                        const newData = [...chartData.slice(0, -1), {
+                            ...lastCandle,
+                            close,
+                            high: Math.max(lastCandle.high, close),
+                            low: Math.min(lastCandle.low, close),
+                            volume
+                        }];
+                        setChartData(newData);
+                        setIsRising(true);
+
+                        // 1초 후 색상 복구
+                        setTimeout(() => setIsRising(false), 1000);
+                    }
+                } else if (candleSeriesRef.current && nextIncreaseDate) {
+                    const initialRandomValue = parseFloat((Math.random() * 50 + 100).toFixed(3));
+                    const newData = [{
+                        time: nextIncreaseDate,
+                        open: initialRandomValue,
+                        high: initialRandomValue * 1.01,
+                        low: initialRandomValue * 0.99,
+                        close: initialRandomValue * 1.03,
+                        volume: Math.floor(Math.random() * 1000) + 500
+                    }];
+                    setChartData(newData);
+                    setIsRising(true);
+                    setHasIncreasedOnce(true);
+
+                    // 1초 후 색상 복구
+                    setTimeout(() => setIsRising(false), 1000);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    <header className="bg-blue-600 dark:bg-blue-800 text-white p-4 flex justify-between items-center">
+                        <h1 className="text-2xl font-bold">떡상 기원</h1>
+                        <button
+                            onClick={() => setIsDarkMode(!isDarkMode)}
+                            className="p-2 rounded-full bg-gray-200 dark:bg-gray-700"
+                        >
+                            {isDarkMode ? '☀️' : '🌙'}
+                        </button>
+                    </header>
+
+                    <div className="flex flex-1">
+                        <aside className="w-64 bg-gray-200 dark:bg-gray-800 p-4">
+                            <h2 className="text-lg font-semibold mb-4">인기 종목</h2>
+                            <ul>
+                                {stockList.map(stock => (
+                                    <li
+                                        key={stock}
+                                        className="p-2 hover:bg-gray-300 dark:hover:bg-gray-700 cursor-pointer"
+                                        onClick={() => handleStockSelect(stock)}
+                                    >
+                                        {stock}
+                                    </li>
+                                ))}
+                            </ul>
+                        </aside>
+
+                        <main className="flex-1 p-6">
+                            <div className="mb-6">
+                                <label htmlFor="stock-name" className="block text-lg font-medium mb-2">
+                                    주식 종목
+                                </label>
+                                <input
+                                    id="stock-name"
+                                    type="text"
+                                    value={stockName}
+                                    onChange={handleStockInput}
+                                    placeholder="종목 입력"
+                                    className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                                />
+                                {filteredStocks.length > 0 && (
+                                    <ul className="absolute bg-white dark:bg-gray-800 border rounded w-64 max-h-40엄 overflow-auto">
+                                        {filteredStocks.map(stock => (
+                                            <li
+                                                key={stock}
+                                                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer"
+                                                onClick={() => handleStockSelect(stock)}
+                                            >
+                                                {stock}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+
+                            <div
+                                ref={chartRef}
+                                className="border rounded shadow-lg bg-white dark:bg-gray-800"
+                            ></div>
+
+                            <button
+                                onClick={handleIncrease}
+                                className="mt-4 px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition transform hover:scale-105 active:scale-95"
+                            >
+                                떡상! +
+                            </button>
+                        </main>
+                    </div>
+
+                    <footer className="bg-gray-200 dark:bg-gray-800 p-4 text-center">
+                        <p>© 2025 떡상 기원. 희망을 드립니다!</p>
+                    </footer>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>
